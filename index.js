@@ -3,6 +3,7 @@ const fs = require('fs');
 const PDFDocument = require('pdfkit');
 const SVGtoPDF = require("svg-to-pdfkit");
 const sleep = require("system-sleep");
+var convert = require('xml-js');
 
 const config = require("./config");
 
@@ -25,18 +26,14 @@ const HEADERS = {
 };
 
 async function getSVGPage(pageNumber){
-    try {
-        response = await rp({
-            url: `${config.E_BOOK_BASE_URL}/xml/topic${pageNumber.toString()}.svg`,
-            headers: HEADERS,
-            encoding: null,
-            resolveWithFullResponse: true,
-            gzip: true,
-        });
-        return response.body.toString();
-    } catch (error) {
-        console.error(error);
-    }
+    response = await rp({
+        url: `${config.E_BOOK_BASE_URL}/xml/topic${pageNumber.toString()}.svg`,
+        headers: HEADERS,
+        encoding: null,
+        resolveWithFullResponse: true,
+        gzip: true,
+    });
+    return response.body.toString();
 }
 
 async function getFont(fontName){
@@ -78,22 +75,121 @@ function fontCallback(...args){
     
 }
 
+class BookmarkManager{
+
+    constructor(doc){
+        this.doc = doc;
+
+        this.BOOKMARKS = {
+        };
+
+        this.BOOKMARKS_XML_HIERARCHY = {
+            'unit': 'lesson',
+            'lesson': 'bookmark',
+        }
+        this.currentUnit = undefined;
+        this.currentLesson = undefined;
+    }
+
+    async  _getXMLBookmarks(){
+        return await rp({
+            url: `${config.E_BOOK_BASE_URL}/xml/manifest.xml`,
+            headers: HEADERS,
+            gzip: true,
+        });
+    }
+    
+    _addBookmarksRecursive(domItem, childNameToBookmark, type=undefined){
+    
+        if (domItem._attributes && domItem._attributes.page && domItem['bookmark-title'] && type){
+            let page = Number(domItem._attributes.page);
+            let bookmark = { title: domItem['bookmark-title']._text, type: type };
+            page in this.BOOKMARKS ?
+                this.BOOKMARKS[page].push(bookmark) :
+                this.BOOKMARKS[page] = [bookmark];
+        }
+
+        let childsToBookmark = []
+    
+        if (childNameToBookmark && childNameToBookmark in domItem)
+            childsToBookmark = domItem[childNameToBookmark];
+
+        if (typeof childsToBookmark[Symbol.iterator] !== 'function')
+            childsToBookmark = [childsToBookmark];
+            
+        for (let child of childsToBookmark){
+            this._addBookmarksRecursive(child, this.BOOKMARKS_XML_HIERARCHY[childNameToBookmark], childNameToBookmark)
+        }
+    }
+    
+    async initializeBookmarkDefinition(){
+    
+        // try {
+    
+            let xmlContent = await this._getXMLBookmarks();
+    
+            var bookmarkDefinition = JSON.parse(convert.xml2json(xmlContent, {compact: true, spaces: 4}));
+    
+            let course = bookmarkDefinition.course;
+            let bookmarkTree = course['bookmark-tree'];
+    
+            this._addBookmarksRecursive(bookmarkTree, 'unit');
+        
+        // } catch (error) {
+        //     console.error(`Error trying to obtain the bookmarks: ${error}`);
+        // }
+    
+    }
+
+    addBookmarks(page){
+        if (!(page in this.BOOKMARKS))
+            return;
+        for (let bookmark of this.BOOKMARKS[page]){
+            if (bookmark.type == 'unit')
+                this.currentUnit = this.doc.outline.addItem(bookmark.title);
+            else if (bookmark.type == 'lesson')
+                this.currentLesson = this.currentUnit.addItem(bookmark.title);
+            else
+                this.currentLesson.addItem(bookmark.title);
+        }
+    }
+
+}
+
 async function downloadEBook(from, to){
+
     const doc = new PDFDocument;
     let firstPage = true;
+
+    let bookmarkManager = new BookmarkManager(doc);
+
+    await bookmarkManager.initializeBookmarkDefinition();
+
     for (let i=from; i<=to; i++){
 
-        let svgContent = await getSVGPage(i);
+        let svgContent;
+
+        try{
+            svgContent = await getSVGPage(i);
+        }catch(e){
+            console.error(`Error when trying to retrieve page ${i}. Finalizing process.`);
+            break;
+        }
 
         firstPage ? firstPage = false : doc.addPage();
 
+        bookmarkManager.addBookmarks(i);
+        
         SVGtoPDF(doc, svgContent, 0, 0, { fontCallback: fontCallback });
 
         console.info(`Page ${i} sucessfuly added to the e-book.`)
 
     }
+
     doc.pipe(fs.createWriteStream(`${config.E_BOOK_NAME}.pdf`));
+
     doc.end();
+
 }
 
 downloadEBook(config.FROM_PAGE, config.TO_PAGE);
