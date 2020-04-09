@@ -125,7 +125,7 @@ class BookmarkManager{
     
     async initializeBookmarkDefinition(){
     
-        // try {
+        try {
     
             let xmlContent = await this._getXMLBookmarks();
     
@@ -136,9 +136,9 @@ class BookmarkManager{
     
             this._addBookmarksRecursive(bookmarkTree, 'unit');
         
-        // } catch (error) {
-        //     console.error(`Error trying to obtain the bookmarks: ${error}`);
-        // }
+        } catch (error) {
+            console.error(`Error trying to obtain the bookmarks: ${error}`);
+        }
     
     }
 
