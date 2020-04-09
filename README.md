@@ -4,7 +4,7 @@ Installation
 ============
 
 ```
-git clone <this repo> 
+git clone https://github.com/sebasgoldberg/saplh-download.git
 cd saplh-download
 npm i
 cp config-template.js config.js
