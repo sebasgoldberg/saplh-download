@@ -67,7 +67,7 @@ function fontCallback(...args){
 
     getFont(font)
         .then( data => FONTS[font]=data )
-        .catch( error => console.error(error.toString()) )
+        .catch( error => console.error(`Font ${font} not found on SAP Learning HUB.`) )
         .finally( () => requestFinished = true );
 
     while (!requestFinished){
@@ -82,11 +82,15 @@ async function downloadEBook(from, to){
     const doc = new PDFDocument;
     let firstPage = true;
     for (let i=from; i<=to; i++){
+
         let svgContent = await getSVGPage(i);
 
         firstPage ? firstPage = false : doc.addPage();
 
         SVGtoPDF(doc, svgContent, 0, 0, { fontCallback: fontCallback });
+
+        console.info(`Page ${i} sucessfuly added to the e-book.`)
+
     }
     doc.pipe(fs.createWriteStream(`${config.E_BOOK_NAME}.pdf`));
     doc.end();
