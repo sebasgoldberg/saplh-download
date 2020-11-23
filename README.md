@@ -2,7 +2,7 @@ Tool to download e-books from SAP Learning Hub
 
 Requirements
 ============
-- Node: https://nodejs.org/es/
+- Node v10: https://nodejs.org/es/
 
 Installation
 ============
